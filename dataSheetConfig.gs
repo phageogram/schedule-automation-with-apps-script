@@ -1,60 +1,108 @@
- function splitRow() {
-  // Get the active (source) spreadsheet
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = spreadsheet.getSheetByName('Input');
+function splitRow() {
+  // Get form submission sheet and values, log to check data type
+  spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
-  // Get target sheet
-  var targetSheetName = "Data";
-  var targetSheet = spreadsheet.getSheetByName(targetSheetName);
+  sourceSheet = spreadsheet.getSheetByName('Input');
+  sourceValues = getData(sourceSheet);
 
-  // Get timestamp of last processed form submission
-  var lastTimestamp = targetSheet.getRange("Z1").getValue();
+  targetSheet = spreadsheet.getSheetByName('Data');
 
-  // Function to fetch data range
-  var getDataRange = function(column) {
-  return sheet.getRange(2, column, 1000, 1).getValues().flat().filter(Boolean);
-  };
 
-  // Get relevant data values
-  var plantData = sheet.getRange('F2:F1001').getValues().filter(String);
-  var dateRange = getDataRange(2);
-  var locationRange = getDataRange(8);
-  var eventTypes = getDataRange(5);
-  var eventNames = getDataRange(7);
-  var eventStartTimes = getDataRange(3);
-  var eventEndTimes = getDataRange(4);
+  // Use this variable to check for new form submission
+  var lastTimeStamp = targetSheet.getRange("Z1").getValue();
 
-  // Initialize empty arrays for storing output
+
+  // Initialize list to push to spreadsheet
+  var output = [];
+
+
+  var lastRow = getLastDataRow(targetSheet); // gets last row with real data
+
+  for (let i=0; i < sourceValues.length; i++) {
+    if (sourceValues[i][0] > lastTimeStamp) {
+      output.push(...pushToArray(sourceValues[i]));
+    }
+  }
+
+
+  if (output.length > 0) {
+    // update last timestamp for form submission
+    targetSheet.getRange("Z1").setValue(new Date());
+
+    // set values in target sheet starting from last row with real data
+    targetSheet.getRange(lastRow + 1, 1, output.length, output[0].length).setValues(output);
+    
+  }
+
+  Logger.log(output);
+
+}
+
+function pushToArray(row) {
+  var date = row[1];
+  var location = row[7];
+  var startTime = row[2];
+  var endTime = row[3];
+  var eventType = row[4];
+  var eventName = row[6];
+  var plantData = [row[5]];
+  var polygon = String(row[10]);
+
+  // Initialize arrays for storing output
   var left = [];
   var right = [];
   var tempArray = [];
+  var result = [];
 
-  for (i=0; i < plantData.length; i++) {
-    left.push([dateRange[i], eventStartTimes[i], eventEndTimes[i], eventTypes[i], eventNames[i], locationRange[i]]);
-    for (j=0; j < plantData[i].length; j++) {
-      tempArray.push(plantData[i][j].split(/[,=]/).map(function(value) { return value.trim(); }));
+  //console.log(plantData);
+
+  // Store repeating data in var left and exploded data in right
+  left = [date, startTime, endTime, eventType, eventName, location, polygon];
+  
+  //console.log(left)
+
+  for (let i=0;i<plantData.length;i++) {
+    tempArray.push(String(plantData).split(/[,=]/).map(function(value) {return value.trim(); }));
+  }
+
+  //console.log(tempArray[0]);
+
+  right = formatList(tempArray[0]);
+
+  //console.log(right);
+
+  for (var i = 0; i < right.length; i++) {
+    result.push(left.concat(right[i]));
+  }
+
+  return result;
+
+}
+
+
+function getLastDataRow(sheet) {
+  var lastRow = sheet.getLastRow();
+  var range = sheet.getRange(1, 1, lastRow, 1);
+  var values = range.getValue();
+
+
+  for (var i = lastRow; i > 0; i--) {
+    if (values[i] !== "") { // check for empty string from IF() function in sheet
+      return i; // if no hidden string, return index of last row
     }
   }
 
-  for (i=0; i < tempArray.length; i++) {
-    l = formatList(tempArray[i])
-    right.push(l)
-  }
+  return 0; // if not data is found, return 0
+}
 
-  result = [];
 
-  // Combine left and right arrays
-  for (var i = 0; i < left.length; i++) {
-    for (var j = 0; j < right[i].length; j++) {
-      var combinedList = left[i].concat(right[i][j]);
-      console.log(right[i][j]);
-      result.push(combinedList);
-    }
-  }
-  console.log(result)
-  // Update the last processed timestamp in the target sheet and push values to target sheet
-  if (result.length > 0) {
-    targetSheet.getRange("Z1").setValue(new Date());
-    targetSheet.getRange(targetSheet.getLastRow() + 1, 1, result.length, result[0].length).setValues(result);
-  }
+function getData(sheet) {
+
+  allValues = sheet.getDataRange().getValues().slice(1);
+
+  filteredValues = allValues.filter(function(row) {
+    return row.some(Boolean);
+  });
+
+  return filteredValues;
 }
